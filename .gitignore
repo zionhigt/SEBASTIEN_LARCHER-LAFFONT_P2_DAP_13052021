@@ -1,0 +1,7 @@
+scraping/__pycache__/
+gotten_data/
+utils/__pycache__/
+utils/a.py
+utils/b.py
+utils/singleton.py
+utils/link.py

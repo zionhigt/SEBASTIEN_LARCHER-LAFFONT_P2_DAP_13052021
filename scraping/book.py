@@ -1,18 +1,14 @@
 from scraping.scraping import Scrap
-from bs4 import BeautifulSoup as BS
 #get a book
 class Book(object):
 	def __init__(self, hyper_text_book, category):
 		self.base_url = 'https://books.toscrape.com/catalogue/'
 		self.book = hyper_text_book
 		self.category = category
-		self.do_book()
-
-	def do_book(self):
 		self.url = Scrap('text', self.book, ['<a>']).get()[0].attrs['href'].replace('../../../', self.base_url)
 		book_info = Scrap('request', self.url, ['<article class=\"product_page\">']).get()[0].prettify()
 		table_info = Scrap("text", book_info, ['<table class=\"table table-striped\">']).get()[0].prettify()
-		for row in BS(table_info, 'html.parser').find_all('tr'):
+		for row in Scrap('text', table_info, ['<tr>']).get():
 			current_row_head = row.find('th').text.replace('\n', '').replace(' ', '')
 			if current_row_head == "UPC":
 				self.UPC = row.find('td').text.replace('\n', '').replace(' ', '')
@@ -28,7 +24,6 @@ class Book(object):
 
 			elif current_row_head == "Numberofreviews":
 				self.rating = int(row.find('td').text.replace('\n', '').replace(' ', ''))
-
 
 
 		self.description = Scrap("text", book_info, ['<p>']).get()[3].text

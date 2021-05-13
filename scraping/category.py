@@ -1,5 +1,6 @@
 from bs4 import BeautifulSoup as BS
 from scraping.scraping import Scrap
+from utils.progress import Progress
 
 class Category(object):
 	def __init__(self, config):

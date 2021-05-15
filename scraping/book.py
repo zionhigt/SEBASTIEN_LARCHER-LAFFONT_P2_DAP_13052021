@@ -1,7 +1,11 @@
-from scraping.scraping import Scrap
-#get a book
+try:
+	from scraping import Scrap
+except ImportError:
+	from scraping.scraping import Scrap
+
 class Book(object):
 	def __init__(self, hyper_text_book, category):
+		'''This module provide a Dictionairy book by his get() method. It expects both arguments on his constructor \n - A Hyper text of book extract from his category page \n - A category name.'''
 		self.base_url = 'https://books.toscrape.com/catalogue/'
 		self.book = hyper_text_book
 		self.category = category
@@ -26,15 +30,11 @@ class Book(object):
 				self.rating = int(row.find('td').text.replace('\n', '').replace(' ', ''))
 
 
-		self.description = Scrap("text", book_info, ['<p>']).get()[3].text
+		self.description = Scrap("text", book_info, ['<p>']).get()[3].text + "\n\n"
 
 		self.title = Scrap("text", book_info, ['<h1>']).get()[0].text.replace('\n', '').replace('  ', '')[:-1].replace("\"", "&quot;")
-		try:
-			self.img_url = Scrap("text", book_info, ['<img alt=\"{}\">'.format(self.title)]).get()[0].attrs['src'].replace('../../', self.base_url).replace('catalogue/', "")
-		except IndexError:
-			self.img_url = ""
-			print(Scrap("text", book_info, ['<img>']).get())
-
+		self.img_url = Scrap("text", book_info, ['<img alt=\"{}\">'.format(self.title)]).get()[0].attrs['src'].replace('../../', self.base_url).replace('catalogue/', "")
+		
 	def get(self):
 		
 		formated_book = {
@@ -51,3 +51,5 @@ class Book(object):
 		}
 
 		return formated_book
+if __name__ == '__main__':
+	help(Book)

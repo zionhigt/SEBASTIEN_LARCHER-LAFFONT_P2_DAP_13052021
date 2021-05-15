@@ -12,10 +12,24 @@ class Progress(object):
 		self.view_type = view_type
 		self.msg_start = msg_start
 		self.msg_end = msg_end
+		self.decorator_id = 0
+		self.decorator_vector = 1
 
-	def update(self, step=0):
+	def update(self, step=0, time_exec=0.001):
+		if self.decorator_id == 2:
+			self.decorator_vector = -1
+			decorator = "..*"
+		elif self.decorator_id == 0:
+			self.decorator_vector = 1
+			decorator = "*.."
+		else:
+			decorator = '.*.'
+
+		self.decorator_id += self.decorator_vector
+		
 		sys.stdout.flush()
-		sys.stdout.write('\r{} : {}/{} {}'.format(self.msg_start, step, self.steps, self.msg_end))
+		# sys.stdout.write('\x1b[2K\r')
+		sys.stdout.write('\x1b[2K\r{} : {}/{} {} {} in {}'.format(self.msg_start, step, self.steps, decorator, self.msg_end, time_exec))
 if __name__ == '__main__':
 	help(Progress)
 # category.csv... X/Y lignes have been written

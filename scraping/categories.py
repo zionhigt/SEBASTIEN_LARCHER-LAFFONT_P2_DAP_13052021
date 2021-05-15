@@ -1,11 +1,11 @@
-from scraping.scraping import Scrap
-from utils.progress import Progress
-#def __init__(self, source_type, source, template):
+try:
+	from scraping import Scrap
+except ImportError:
+	from scraping.scraping import Scrap
 
 class Categories(object):
-
 	def __init__(self):
-
+		'''That module runs through categories list of the home page. It give us the name and the URL for all of them'''
 		self.categories = []
 		self.url_to_scrap = 'https://books.toscrape.com/index.html'
 	
@@ -20,3 +20,6 @@ class Categories(object):
 			self.categories.append({'name': name, 'url': url})
 		
 		return self.categories[1:]
+
+if __name__ == '__main__':
+	help(Categories)

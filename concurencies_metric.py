@@ -41,14 +41,16 @@ for cat in cats:
 		writer = csv.DictWriter(save_data_file, fieldnames= field_names)
 		writer.writeheader()
 		books =  category.get()
+		books_to_write = []
 		write_progress = Progress(len(books), 'fraction', '{}.csv {}/{} categories'.format(category.name.lower(), category_id, len(cats)), 'lines have been written')
 		book_id = 1
 		time_to_exec = 0
 		for book in books:
 			book = Book(book.prettify(), category.name)
-			writer.writerow(book.get())
+			books_to_write.append(book.get())
 			write_progress.update(book_id, show_time(round(time.perf_counter() - time_start, 3)))
 			book_id += 1
+		writer.writerows(books_to_write)
 
 	category_id += 1
 

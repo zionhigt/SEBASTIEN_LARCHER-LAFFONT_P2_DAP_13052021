@@ -12,7 +12,11 @@ def getHtml(url):
         else:
             print("La requête a échoué avec le status {} \n\r {}".format(str(HTML.status_code), url))
             return False
-
+def show_time(second):
+	s = str(int(second % 60))
+	s = s if len(s) == 2 else '0' + s
+	show = '{}m{}s'.format(int(second / 60) , s)
+	return show
 
 def extractor(url):
     #Get the home page and all the pagination
@@ -30,26 +34,25 @@ def extractor(url):
         else:
             pages_count = 1
         for page_id in range(pages_count):
+
             page_id += 1
+            page_url = url
             if page_id > 1:
                 page_url = urllib.parse.urljoin(url, 'catalogue/page-{}.html'.format(page_id))
-                current_page = getHtml(page_url)
-                current_soup = BS(current_page, 'html.parser')
-                books_elements = current_soup.find_all('article', {'class': "product_pod"})
+            current_page = getHtml(page_url)
+            current_soup = BS(current_page, 'html.parser')
+            books_elements = current_soup.find_all('article', {'class': "product_pod"})
 
-                for book_element in books_elements:
-                    book_url = urllib.parse.urljoin(url, "catalogue/" + book_element.a['href'])
-                    book_page = getHtml(book_url)
-                    sys.stdout.write('\r' + str(a))
-                    a+=1
-                    book_soup = BS(book_page, 'html.parser')
-                    url_tag = book_soup.new_tag("div", id="selfURL", url=book_url)
-                    book_soup.append(url_tag)
-                    books_list.append(book_soup)
+            for book_element in books_elements:
+                book_url = urllib.parse.urljoin(page_url, book_element.a['href'])
+                book_page = getHtml(book_url)
+                sys.stdout.write('\r' + str(a))
+                a+=1
+                book_soup = BS(book_page, 'html.parser')
+                url_tag = book_soup.new_tag("div", id="selfURL", url=book_url)
+                book_soup.append(url_tag)
+                books_list.append(book_soup)
 
-                    # debugging
-                    if a == 10:
-                        return books_list
         return books_list
     else:
         return False
@@ -90,7 +93,11 @@ def transformer(extracted_data):
 
         title = page_book.find('h1').text
 
-        description = page_book.find('div', {'id': "product_description"}).findNext('p').text
+        description = page_book.find('div', {'id': "product_description"})
+        if not isinstance(description, type(None)):
+            description = description.findNext('p').text
+        else:
+            description = "Données non renseignées"
 
         brut_img_url = page_book.find('div', {'class': "carousel-inner"}).img['src']
         img_url = urllib.parse.urljoin('https://books.toscrape.com/', brut_img_url)
@@ -110,20 +117,39 @@ def transformer(extracted_data):
         if category not in organized_books:
             organized_books[category] = []
         organized_books[category].append(formated_book)
-   # print(organized_books)
     return organized_books
 
 def loader(transformed_data):
     # Run through the transformed_data
     # Saving all elements as a [category_name].csv
+    if not os.path.exists('./gotten_data/'):
+        os.system('mkdir gotten_data')
+    field_names = ['product_page_url',
+                   'UPC',
+                   'title',
+                   'price_including_tax',
+                   'price_excluding_tax',
+                   'number_available',
+                   'product_description',
+                   'category',
+                   'review_rating',
+                   'image_url']
+    for category in transformed_data:
+        file_name = category.lower().replace(" ", "_")
+        with open('./gotten_data/{}.csv'.format(file_name), 'w', encoding="utf-8") as save_data_file:
+            writer = csv.DictWriter(save_data_file, fieldnames=field_names)
+            writer.writeheader()
+            writer.writerows(transformed_data[category])
     return True
 
 def main():
+    time_start = time.perf_counter()
     extracted_data = extractor("http://books.toscrape.com/index.html")
     if extracted_data:
         transformed_data = transformer(extracted_data)
         if transformed_data:
             loader(transformed_data)
+            print(show_time(round(time.perf_counter() - time_start, 3)))
 
 if(__name__ == '__main__'):
 

@@ -1,13 +1,16 @@
 from bs4 import BeautifulSoup as BS
 from multiprocessing import Pool
+from functools import partial
 import urllib.parse, requests, csv, os, sys, time
-#TODO
-#Extracting all the books from booktosrcap.com
-#Transforming got data earlier
-#Loading into .csv files, each books of categories
+
+
+# TODO:
+# Extracting all the books from booktosrcap.com
+# Transforming got data earlier
+# Loading into .csv files, each books of categories
 
 def getHtml(url):
-    #Return a HTML page from an URL
+    # Return a HTML page from an URL
     with requests.get(url) as HTML:
         if HTML.status_code == 200:
             return HTML.text
@@ -15,69 +18,73 @@ def getHtml(url):
             print("La requête a échoué avec le status {} \n\r {}".format(str(HTML.status_code), url))
             return False
 
+
 def show_time(second):
     # Convert a seconds as a --m--s format
-	s = str(int(second % 60))
-	s = s if len(s) == 2 else '0' + s
-	show = '{}m{}s'.format(int(second / 60) , s)
-	return show
+    s = str(int(second % 60))
+    s = s if len(s) == 2 else '0' + s
+    show = '{}m{}s'.format(int(second / 60), s)
+    return show
+
+def extract_a_book(id, data):
+
+    url = data[id]
+    book_page = getHtml(url)
+    book_soup = BS(book_page, 'html.parser')
+
+    url_tag = book_soup.new_tag("div", id="selfURL", url=url)
+    book_soup.append(url_tag)
+
+    b = id % 5
+    decorator = "".join(['.'] * b)
+    sys.stdout.write('\x1b[2K\r téléchargement des donées {}'.format(decorator))
+
+    return str(book_soup)
 
 def extractor(url):
-    #Get the home page and all the pagination
-    #For each pages was got, get all found books
-    #Return a list of page_book:
+    # Get the home page and all the pagination
+    # For each pages was got, get all found books
+    # Return a list of page_book:
 
-    a = 1
+    books_list = []
     book_urls = []
-
     hyper_menu = getHtml(url)
-    if hyper_menu: # if menu page is got
+    if hyper_menu:  # if menu page is got
         menu_page = BS(hyper_menu, 'html.parser')
 
         hyper_pagination = menu_page.find('li', {'class': "current"})
-        pages_count = int(hyper_pagination.text.split("Page 1 of")[1]) # Get a number of pages paginated
+        pages_count = int(hyper_pagination.text.split("Page 1 of")[1])  # Get a number of pages paginated
         for page_id in range(pages_count):
             page_id += 1
 
+
             page_url = url
+            current_page = hyper_menu
             if page_id > 1:
                 page_url = urllib.parse.urljoin(url, 'catalogue/page-{}.html'.format(page_id))
+                current_page = getHtml(page_url)
 
-            current_page = getHtml(page_url)
             current_soup = BS(current_page, 'html.parser')
             books_elements = current_soup.find_all('article', {'class': "product_pod"})
+            sys.stdout.write('\x1b[2K\r {}/{} pages indexées '.format(page_id, pages_count))
 
             for book_element in books_elements:
                 book_urls.append(urllib.parse.urljoin(page_url, book_element.a['href']))
 
-            sys.stdout.write('\x1b[2K\r {}/{} pages indexées '.format(page_id, pages_count))
+        with Pool(8) as p:
+            books_list = p.imap(partial(extract_a_book, data=book_urls), range(len(book_urls)), 3)
 
-        with Pool(64) as p:
-            extracted_books_list = []
-            books_list = p.imap(getHtml, book_urls, 12)
 
-            for book_page in books_list:
-                book_url = urllib.parse.urljoin(page_url, book_element.a['href'])
-                book_soup = BS(book_page, 'html.parser')
 
-                url_tag = book_soup.new_tag("div", id="selfURL", url=book_url)
-                book_soup.append(url_tag)
+        return list(books_list)
 
-                extracted_books_list.append(book_soup)
-
-                sys.stdout.write('\x1b[2K\r {}/1000 livres récupéré(s)'.format(a))
-                a += 1
-
-        return extracted_books_list
     else:
         return False
 
 
-
-
 def transformer(extracted_data):
-    #Run through the extracted_data
-    #Return a dictionary such as:
+    # Run through the extracted_data
+    # Return a dictionary such as:
     """
     {
         categoryName: [{transformed_data_of_book_1}, {transformed_data_of_book_2}, ...],
@@ -86,29 +93,31 @@ def transformer(extracted_data):
     """
 
     a = 0
-    organized_books = {} # dictionary returned
+    organized_books = {}  # dictionary returned
 
-    for page_book in extracted_data:
-        b = a%5
-        decorator = "".join(['.']*b)
-        sys.stdout.write('\x1b[2K\r transformmation des donées {}'.format(decorator))
-        a+=1
+    for page in extracted_data:
 
+        sys.stdout.write('\x1b[2K\r {}/{} livres traités'.format(a, len(extracted_data)))
+        a += 1
+
+        page_book = BS(page, 'html.parser')
         url_parent = page_book.find('div', {'id': "selfURL"})
-        url = url_parent['url']
+        url = url_parent.attrs['url']
+        table = page_book.find("table")
+        for row in table.find_all('tr'):
+            if row.th.text == "UPC":
+                UPC = row.td.text
+            elif row.th.text == "Price (incl. tax)":
+                PIT = float(row.td.text.split('£')[1])
+            elif row.th.text == "Price (excl. tax)":
+                PET = float(row.td.text.split('£')[1])
+            elif row.th.text == "Availability":
+                stock = int(row.td.text.replace('In stock (', "").replace(' available)', ""))
 
-        for table in page_book.find_all("table"):
-            for row in table.find_all('tr'):
-                if row.th.text == "UPC":
-                    UPC = row.td.text
-                elif row.th.text == "Price (incl. tax)":
-                    PIT = float(row.td.text.split('£')[1])
-                elif row.th.text == "Price (excl. tax)":
-                    PET = float(row.td.text.split('£')[1])
-                elif row.th.text == "Availability":
-                    stock = int(row.td.text.replace('In stock (', "").replace(' available)', ""))
-                elif row.th.text == "Number of reviews":
-                    rating = int(row.td.text)
+        translate_number = ['Zero', 'One', 'Two', 'Three', 'Four', 'Five']
+        rating_element = page_book.find('p', {'class': 'star-rating'})
+        rating_count_letter = rating_element.attrs['class'][1]
+        rating = translate_number.index(rating_count_letter)
 
         parent_category_name = page_book.find('ul', {'class': "breadcrumb"})
         category = parent_category_name.find_all('a')[2].text
@@ -143,6 +152,7 @@ def transformer(extracted_data):
 
     return organized_books
 
+
 def loader(transformed_data):
     # Run through the transformed_data
     # Saving all elements as a [category_name].csv
@@ -171,6 +181,7 @@ def loader(transformed_data):
 
     return True
 
+
 def main():
     time_start = time.perf_counter()
     extracted_data = extractor("http://books.toscrape.com/index.html")
@@ -180,7 +191,6 @@ def main():
             loader(transformed_data)
             print("" + show_time(round(time.perf_counter() - time_start, 3)))
 
-if(__name__ == '__main__'):
 
+if (__name__ == '__main__'):
     main()
-

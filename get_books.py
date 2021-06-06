@@ -1,5 +1,4 @@
 from bs4 import BeautifulSoup as BS
-from multiprocessing import Pool
 from functools import partial
 import urllib.parse, requests, csv, os, sys, time
 
@@ -8,8 +7,25 @@ import urllib.parse, requests, csv, os, sys, time
 # Extracting all the books from booktosrcap.com
 # Transforming got data earlier
 # Loading into .csv files, each books of categories
+def click_next_gen(base_url, run=True):
+    while run:
+        page = get_html(base_url)
+        if page:
+            soup_point = BS(page, 'html.parser')
+            next_button = soup_point.find('li', {'class', 'next'})
+            if next_button:
+                next_rel_url = next_button.a['href']
+                next_url = urllib.parse.urljoin(base_url, next_rel_url)
+                current_url = base_url
+                base_url = next_url
+                yield [page, current_url]
+            else:
+                yield [page, base_url]
+                run = False
+        else:
+            run = False
 
-def getHtml(url):
+def get_html(url):
     # Return a HTML page from an URL
     with requests.get(url) as HTML:
         if HTML.status_code == 200:
@@ -17,6 +33,19 @@ def getHtml(url):
         else:
             print("La requête a échoué avec le status {} \n\r {}".format(str(HTML.status_code), url))
             return False
+
+def get_image(url, image_location):# dest = folder_name/image_name.*  | * => ext
+    image_extention = os.path.splitext(url)[-1]
+    image_path = image_location + image_extention
+    with open(image_path, 'wb') as image:
+        with requests.get(url) as IMG:
+            if IMG.status_code == 200:
+                image.write(IMG.content)
+                image.close()
+                return(image_path)
+            else:
+                print("La requête a échoué avec le status {} \n\r {}".format(str(IMG.status_code), url))
+                return False
 
 
 def show_time(second):
@@ -26,19 +55,13 @@ def show_time(second):
     show = '{}m{}s'.format(int(second / 60), s)
     return show
 
-def extract_a_book(id, data):
+def extract_a_book(url):
 
-    url = data[id]
-    book_page = getHtml(url)
+    book_page = get_html(url)
     book_soup = BS(book_page, 'html.parser')
 
     url_tag = book_soup.new_tag("div", id="selfURL", url=url)
     book_soup.append(url_tag)
-
-    b = id % 5
-    decorator = "".join(['.'] * b)
-    sys.stdout.write('\x1b[2K\r téléchargement des donées {}'.format(decorator))
-
     return str(book_soup)
 
 def extractor(url):
@@ -47,39 +70,30 @@ def extractor(url):
     # Return a list of page_book:
 
     books_list = []
-    book_urls = []
-    hyper_menu = getHtml(url)
-    if hyper_menu:  # if menu page is got
-        menu_page = BS(hyper_menu, 'html.parser')
 
-        hyper_pagination = menu_page.find('li', {'class': "current"})
-        pages_count = int(hyper_pagination.text.split("Page 1 of")[1])  # Get a number of pages paginated
-        for page_id in range(pages_count):
-            page_id += 1
+    categories_pages = click_next_gen(url)
+    page_id = 0
 
+    for page in categories_pages:
+        print('\n\r' + page[1])
+        current_soup = BS(page[0], 'html.parser')
+        books_elements = current_soup.find_all('article', {'class': "product_pod"})
+        sys.stdout.write('\x1b[2K\r {} pages indexées '.format(page_id))
 
-            page_url = url
-            current_page = hyper_menu
-            if page_id > 1:
-                page_url = urllib.parse.urljoin(url, 'catalogue/page-{}.html'.format(page_id))
-                current_page = getHtml(page_url)
+        book_id = 0
+        page_id += 1
+        for book_element in books_elements:
+            rel_book_url = book_element.a['href']
+            book_url = urllib.parse.urljoin(page[1], rel_book_url)
+            book_page = extract_a_book(book_url)
+            books_list.append(book_page)
 
-            current_soup = BS(current_page, 'html.parser')
-            books_elements = current_soup.find_all('article', {'class': "product_pod"})
-            sys.stdout.write('\x1b[2K\r {}/{} pages indexées '.format(page_id, pages_count))
+            book_id+=1
+            b = book_id % 5
+            decorator = "".join(['.'] * b)
+            sys.stdout.write('\x1b[2K\r téléchargement de {} livres {}'.format(book_id, decorator))
 
-            for book_element in books_elements:
-                book_urls.append(urllib.parse.urljoin(page_url, book_element.a['href']))
-
-        with Pool(8) as p:
-            books_list = p.imap(partial(extract_a_book, data=book_urls), range(len(book_urls)), 3)
-
-
-
-        return list(books_list)
-
-    else:
-        return False
+    return list(books_list)
 
 
 def transformer(extracted_data):
@@ -157,8 +171,9 @@ def loader(transformed_data):
     # Run through the transformed_data
     # Saving all elements as a [category_name].csv
 
-    if not os.path.exists('./gotten_data/'):
-        os.system('mkdir gotten_data')
+    data_folder = 'data'
+    if not os.path.isdir(data_folder):
+        os.system("mkdir {}".format(data_folder))
 
     field_names = ['product_page_url',
                    'UPC',
@@ -172,24 +187,39 @@ def loader(transformed_data):
                    'image_url']
 
     for category in transformed_data:
-        file_name = category.lower().replace(" ", "_")
-        with open('./gotten_data/{}.csv'.format(file_name), 'w', encoding="utf-8") as save_data_file:
+        clean_cat_name = category.lower().replace(" ", "_")
+        cat_folder = os.path.join(data_folder, clean_cat_name)
+        if not os.path.isdir(cat_folder):
+            os.system("mkdir {}".format(cat_folder))
+
+        images_folder = os.path.join(cat_folder, 'images')
+        if not os.path.isdir(images_folder):
+            os.system("mkdir {}".format(images_folder))
+
+        # Get the book's images
+        save_image = map(lambda book: get_image(book['image_url'], os.path.join(images_folder, book['UPC'])), transformed_data[category])
+        for i in save_image:
+            sys.stdout.write('\x1b[2K\r {} à été creé'.format(i))
+        file_data_name = clean_cat_name + '.csv'
+        with open(os.path.join(cat_folder, file_data_name), 'w', encoding="utf-8") as save_data_file:
             writer = csv.DictWriter(save_data_file, fieldnames=field_names)
             writer.writeheader()
             writer.writerows(transformed_data[category])
-            print('\x1b[2K\r {}.csv à été creé'.format(file_name))
+            sys.stdout.write('\x1b[2K\r {} à été creé'.format(file_data_name))
 
     return True
 
 
 def main():
     time_start = time.perf_counter()
+    # extracted_data = extractor("http://books.toscrape.com/catalogue/page-50.html")
+
     extracted_data = extractor("http://books.toscrape.com/index.html")
     if extracted_data:
         transformed_data = transformer(extracted_data)
         if transformed_data:
             loader(transformed_data)
-            print("" + show_time(round(time.perf_counter() - time_start, 3)))
+            print("\n\r" + show_time(round(time.perf_counter() - time_start, 3)))
 
 
 if (__name__ == '__main__'):

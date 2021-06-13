@@ -30,5 +30,4 @@ Vous pouvez éxecuter la collecte des données grace à la commande:
 `python get_books.py`
 
 ##### Prennez un café ☕
-Le scraping dure environs 25mins sur ma machine de développement.
-Cette machine à des performances trés modestes.
+Le scraping dure en moyenne 25 minutes.

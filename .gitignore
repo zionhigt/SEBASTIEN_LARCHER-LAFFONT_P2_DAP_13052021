@@ -1,4 +1,6 @@
 .idea/
 data/
 poc.py
+compute_hmay_requests.py
+soutenance/
 env/
